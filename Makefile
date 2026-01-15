@@ -28,6 +28,7 @@ clear:
 VARS_EXTRACTED := $(shell grep -v '^#' .env | cut -d= -f1 | sed 's/^/$$/' | paste -sd, -)
 
 template:
+	-mkdir -p server/hy2/config server/nginx/conf server/xray/config
 	envsubst '$(VARS_EXTRACTED)' < server/hy2/config/config.toml.template > server/hy2/config/config.toml
 	envsubst '$(VARS_EXTRACTED)' < server/nginx/acme.conf.template > server/nginx/conf/acme.conf
 	envsubst '$(VARS_EXTRACTED)' < server/xray/config/config.json.template > server/xray/config/config.json
