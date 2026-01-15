@@ -1,0 +1,14 @@
+services:
+  hysteria:
+    image: tobyxdd/hysteria:v2.7.0
+    container_name: hy2
+    restart: always
+    volumes:
+      - ./config:/etc/hysteria/config
+      - /etc/ssl:/etc/ssl
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    network_mode: host
+    environment:
+      - HYSTERIA_LOG_LEVEL=debug
+    command: ["server","-c","/etc/hysteria/config/config.toml"]

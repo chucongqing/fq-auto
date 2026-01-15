@@ -1,0 +1,10 @@
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:26.1.13
+    container_name: xray
+    restart: always
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./config:/etc/xray

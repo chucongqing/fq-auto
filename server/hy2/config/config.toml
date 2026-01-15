@@ -1,0 +1,17 @@
+listen= "$HY2_PORT"
+
+[tls]
+cert = "/etc/ssl/cert.pem"
+key = "/etc/ssl/key.pem"
+sniGuard = "disable"
+
+[auth]
+type = "password"
+password = "$HY2_PASSWORD"
+
+[masquerade]
+type = "proxy"
+
+[masquerade.proxy]
+url = "https://www.bing.com/"
+rewriteHost = true

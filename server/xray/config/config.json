@@ -1,0 +1,42 @@
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "inbounds": [
+        {
+            "port": $XRAY_VLESS_PORT,
+            "protocol": "vless",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "$XRAY_UUID",
+                        "flow": "xtls-rprx-vision"
+                    }
+                ],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "raw",
+                "security": "reality",
+                "realitySettings": {
+                    "show": false,
+                    "target": "$XRAY_TARGET",
+                    "serverNames": [
+                        $XRAY_SERVERNAMES
+                    ],
+                    "shortIds": [
+                        $XRAY_SHORTIDS
+                    ],
+                    "privateKey": "$XRAY_PRIVATE_KEY",
+                    "mldsa65Seed": "$XRAY_MLDSA65_SEED"
+                }
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "protocol": "freedom",
+            "settings": {}
+        }
+    ]
+}

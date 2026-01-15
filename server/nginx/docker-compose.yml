@@ -1,0 +1,11 @@
+services: 
+  nginx:
+    container_name: nginx
+    image: nginx
+    network_mode: host
+    restart: always
+    volumes:
+      - /etc/ssl:/etc/ssl
+      - ./conf:/etc/nginx/conf.d
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
