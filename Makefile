@@ -10,6 +10,7 @@ CUR_DIR := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
 export
 
 env:
+	-mkdir -p /var/www/cert
 	cp .env.example .env
 
 clear:

@@ -6,6 +6,7 @@ services:
     restart: always
     volumes:
       - /etc/ssl:/etc/ssl
+      - /var/www/cert:/var/www/cert
       - ./conf:/etc/nginx/conf.d
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
