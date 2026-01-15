@@ -1,4 +1,4 @@
-listen= "$HY2_PORT"
+listen= "$HY2_ADDR"
 
 [tls]
 cert = "/etc/ssl/cert.pem"

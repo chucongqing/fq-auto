@@ -12,12 +12,18 @@ export
 env:
 	cp .env.example .env
 
+clear:
+	rm -rf server/hy2/config/config.toml
+	rm -rf server/nginx/conf/acme.conf
+	rm -rf server/xray/config/config.json
+	rm -rf .env
+
 # 自动从 .env 中提取所有变量名并拼接成 $VAR1,$VAR2 的格式
 VARS_EXTRACTED := $(shell grep -v '^#' .env | cut -d= -f1 | sed 's/^/$$/' | paste -sd, -)
 
 template:
 	envsubst '$(VARS_EXTRACTED)' < server/hy2/config/config.toml.template > server/hy2/config/config.toml
-	envsubst '$(VARS_EXTRACTED)' < server/nginx/conf/acme.conf.template > server/nginx/conf/acme.conf
+	envsubst '$(VARS_EXTRACTED)' < server/nginx/acme.conf.template > server/nginx/conf/acme.conf
 	envsubst '$(VARS_EXTRACTED)' < server/xray/config/config.json.template > server/xray/config/config.json
 
 issue_cert:
