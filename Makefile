@@ -12,7 +12,7 @@ export
 init:
 	-mkdir -p /var/www/cert
 	-mkdir -p /etc/ssl
-	chmod +x $CURDIR/reload.sh
+	chmod +x ${CUR_DIR}/reload.sh
 
 env:
 	-mkdir -p /var/www/cert
