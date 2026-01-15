@@ -27,8 +27,8 @@
                     "shortIds": [
                         $XRAY_SHORTIDS
                     ],
-                    "privateKey": "$XRAY_PRIVATE_KEY",
-                    "mldsa65Seed": "$XRAY_MLDSA65_SEED"
+                    "privateKey": "$XRAY_REALITY_PRIVATE_KEY",
+                    "mldsa65Seed": "$XRAY_REALITY_MLDSA65_SEED"
                 }
             }
         }
