@@ -9,6 +9,11 @@ CUR_DIR := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
 -include .env
 export
 
+init:
+	-mkdir -p /var/www/cert
+	-mkdir -p /etc/ssl
+	chmod +x $CURDIR/reload.sh
+
 env:
 	-mkdir -p /var/www/cert
 	cp .env.example .env
