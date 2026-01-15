@@ -35,6 +35,7 @@ issue_cert:
 	  --server letsencrypt
 
 install_cert:
+	- mkdir -p /etc/ssl
 	~/.acme.sh/acme.sh --install-cert \
 	  -d "$(MYSITE)" \
 	  --keylength ec-256 \
