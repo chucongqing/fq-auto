@@ -1,5 +1,7 @@
 # auto config
 
+I assume your server is a decent linux server distro. 
+
 ## before you go
 
 install acme.sh
@@ -27,4 +29,5 @@ sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
 ```
 
 if you want enable permently, write the setting to  `/etc/sysctl.conf` and run `sysctl -p`
+
 
