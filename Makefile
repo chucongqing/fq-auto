@@ -12,7 +12,7 @@ export
 init:
 	-mkdir -p /var/www/cert
 	-mkdir -p /etc/ssl
-	chmod +x ${CUR_DIR}/reload.sh
+	chmod +x $(CUR_DIR)/scripts/reload.sh
 
 env:
 	-mkdir -p /var/www/cert
@@ -47,10 +47,10 @@ install_cert:
 	  --keylength ec-256 \
 	  --fullchain-file /etc/ssl/cert.pem \
 	  --key-file /etc/ssl/key.pem \
-	  --reloadcmd "$(CUR_DIR)/reload.sh"
+	  --reloadcmd "$(CUR_DIR)/scripts/reload.sh"
 
 up:
-	$(CUR_DIR)/reload.sh
+	$(CUR_DIR)/scripts/reload.sh
 
 up-nginx:
 	docker compose -f server/nginx/docker-compose.yml up -d

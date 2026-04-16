@@ -1,6 +1,6 @@
 services:
   xray:
-    image: ghcr.io/xtls/xray-core:26.1.13
+    image: ${XRAY_IMAGE:-ghcr.io/xtls/xray-core:26.1.13}
     container_name: xray
     restart: always
     network_mode: host

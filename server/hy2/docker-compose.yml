@@ -1,6 +1,6 @@
 services:
   hysteria:
-    image: tobyxdd/hysteria:v2.7.0
+    image: ${HY2_IMAGE:-tobyxdd/hysteria:v2.7.0}
     container_name: hy2
     restart: always
     volumes:
