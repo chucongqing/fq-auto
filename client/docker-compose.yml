@@ -3,8 +3,7 @@ services:
     image: ${CLIENT_SINGBOX_IMAGE:-ghcr.io/sagernet/sing-box:1.13.12}
     container_name: sing-box-client
     restart: always
-    ports:
-      - "${CLIENT_MIXED_PORT:-7890}:${CLIENT_MIXED_PORT:-7890}"
+    network_mode: host
     volumes:
       - ./config:/etc/sing-box
       - /etc/localtime:/etc/localtime:ro
@@ -15,6 +14,7 @@ services:
     image: ${CLIENT_HY2_IMAGE:-tobyxdd/hysteria:v2.9.2}
     container_name: hysteria2-client
     restart: always
+    env_file: ../.env.client
     ports:
       - "${CLIENT_HY2_SOCKS5_PORT:-7891}:${CLIENT_HY2_SOCKS5_PORT:-7891}"
       - "${CLIENT_HY2_HTTP_PORT:-7892}:${CLIENT_HY2_HTTP_PORT:-7892}"

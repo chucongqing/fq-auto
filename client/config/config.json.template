@@ -48,10 +48,7 @@ $LOCAL_DNS_JSON
       "tag": "proxy",
       "outbounds": [
         "auto",
-        "vless",
-        "hy2",
-        "tuic",
-        "anytls"
+        "tuic"
       ],
       "default": "auto"
     },
@@ -59,50 +56,11 @@ $LOCAL_DNS_JSON
       "type": "urltest",
       "tag": "auto",
       "outbounds": [
-        "vless",
-        "hy2",
-        "tuic",
-        "anytls"
+        "tuic"
       ],
       "url": "https://cp.cloudflare.com/generate_204",
       "interval": "3m0s",
       "tolerance": 50
-    },
-    {
-      "type": "vless",
-      "tag": "vless",
-      "server": "$CLIENT_VLESS_SERVER",
-      "server_port": $CLIENT_VLESS_PORT,
-      "uuid": "$CLIENT_VLESS_UUID",
-      "flow": "xtls-rprx-vision",
-      "tls": {
-        "enabled": true,
-        "server_name": "$CLIENT_VLESS_SERVER_NAME",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        },
-        "reality": {
-          "enabled": true,
-          "public_key": "$CLIENT_VLESS_REALITY_PUBLIC_KEY",
-          "short_id": "$CLIENT_VLESS_REALITY_SHORT_ID"
-        }
-      }
-    },
-    {
-      "type": "hysteria2",
-      "tag": "hy2",
-      "server": "$CLIENT_HY2_SERVER",
-      "server_port": $CLIENT_HY2_PORT,
-      "password": "$CLIENT_HY2_PASSWORD",
-      "tls": {
-        "enabled": true,
-        "server_name": "$CLIENT_HY2_SERVER_NAME",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        }
-      }
     },
     {
       "type": "tuic",
