@@ -11,3 +11,5 @@ server/sing-box/config/config.json
 # Client generated configs
 .env.client
 client/config/config.json
+client/config/rule-set/
+client/hy2-config/config.yaml

@@ -1,0 +1,246 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "dns": {
+    "servers": [
+$REMOTE_DNS_JSON,
+$LOCAL_DNS_JSON
+    ],
+    "rules": [
+      {
+        "clash_mode": "direct",
+        "server": "local-dns"
+      },
+      {
+        "clash_mode": "global",
+        "server": "remote-dns"
+      },
+      {
+        "domain_suffix": [
+          "cn",
+          "local",
+          "lan"
+        ],
+        "server": "local-dns"
+      },
+      {
+        "rule_set": [
+          "geosite-cn"
+        ],
+        "server": "local-dns"
+      }
+    ],
+    "final": "remote-dns",
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "$CLIENT_MIXED_LISTEN",
+      "listen_port": $CLIENT_MIXED_PORT
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "selector",
+      "tag": "proxy",
+      "outbounds": [
+        "auto",
+        "vless",
+        "hy2",
+        "tuic",
+        "anytls"
+      ],
+      "default": "auto"
+    },
+    {
+      "type": "urltest",
+      "tag": "auto",
+      "outbounds": [
+        "vless",
+        "hy2",
+        "tuic",
+        "anytls"
+      ],
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": "3m0s",
+      "tolerance": 50
+    },
+    {
+      "type": "vless",
+      "tag": "vless",
+      "server": "$CLIENT_VLESS_SERVER",
+      "server_port": $CLIENT_VLESS_PORT,
+      "uuid": "$CLIENT_VLESS_UUID",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "$CLIENT_VLESS_SERVER_NAME",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "$CLIENT_VLESS_REALITY_PUBLIC_KEY",
+          "short_id": "$CLIENT_VLESS_REALITY_SHORT_ID"
+        }
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "hy2",
+      "server": "$CLIENT_HY2_SERVER",
+      "server_port": $CLIENT_HY2_PORT,
+      "password": "$CLIENT_HY2_PASSWORD",
+      "tls": {
+        "enabled": true,
+        "server_name": "$CLIENT_HY2_SERVER_NAME",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      }
+    },
+    {
+      "type": "tuic",
+      "tag": "tuic",
+      "server": "$CLIENT_TUIC_SERVER",
+      "server_port": $CLIENT_TUIC_PORT,
+      "uuid": "$CLIENT_TUIC_UUID",
+      "password": "$CLIENT_TUIC_PASSWORD",
+      "congestion_control": "bbr",
+      "tls": {
+        "enabled": true,
+        "server_name": "$CLIENT_TUIC_SERVER_NAME",
+        "alpn": [
+          "h3"
+        ],
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      }
+    },
+    {
+      "type": "anytls",
+      "tag": "anytls",
+      "server": "$CLIENT_ANYTLS_SERVER",
+      "server_port": $CLIENT_ANYTLS_PORT,
+      "password": "$CLIENT_ANYTLS_PASSWORD",
+      "tls": {
+        "enabled": true,
+        "server_name": "$CLIENT_ANYTLS_SERVER_NAME",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      }
+    },
+    {
+      "type": "socks",
+      "tag": "warp",
+      "server": "$CLIENT_WARP_SERVER",
+      "server_port": $CLIENT_WARP_PORT
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "default_domain_resolver": "local-dns",
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "port": 53
+          },
+          {
+            "protocol": "dns"
+          }
+        ],
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "clash_mode": "direct",
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "clash_mode": "global",
+        "action": "route",
+        "outbound": "proxy"
+      },
+      {
+        "domain_suffix": [
+          "google.com",
+          "googleapis.com",
+          "googleusercontent.com",
+          "gstatic.com",
+          "gvt1.com",
+          "gvt2.com",
+          "gvt3.com",
+          "ggpht.com",
+          "android.com",
+          "openai.com",
+          "chatgpt.com",
+          "gemini.google.com"
+        ],
+        "action": "route",
+        "outbound": "warp"
+      },
+      {
+        "domain_suffix": [
+          "cn",
+          "local",
+          "lan"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "geosite-cn"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "geoip-cn"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "geosite-cn",
+        "type": "local",
+        "format": "binary",
+        "path": "/etc/sing-box/rule-set/geosite-cn.srs"
+      },
+      {
+        "tag": "geoip-cn",
+        "type": "local",
+        "format": "binary",
+        "path": "/etc/sing-box/rule-set/geoip-cn.srs"
+      }
+    ],
+    "final": "proxy",
+    "auto_detect_interface": true
+  }
+}

@@ -6,6 +6,10 @@ MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 # 获取 Makefile 所在的目录路径（不包含文件名）
 CUR_DIR := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
 
+CLIENT_RULESET_DIR := $(CUR_DIR)/client/config/rule-set
+CLIENT_GEOSITE_CN_URL := https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs
+CLIENT_GEOIP_CN_URL := https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs
+
 -include .env
 export
 
@@ -180,6 +184,21 @@ client-template:
 	chmod +x $(CUR_DIR)/scripts/gen-client-config.sh
 	$(CUR_DIR)/scripts/gen-client-config.sh
 
+client-download-ruleset:
+	set -e; \
+	mkdir -p $(CLIENT_RULESET_DIR); \
+	if command -v curl >/dev/null 2>&1; then \
+		curl -fsSL --retry 3 -o $(CLIENT_RULESET_DIR)/geosite-cn.srs $(CLIENT_GEOSITE_CN_URL); \
+		curl -fsSL --retry 3 -o $(CLIENT_RULESET_DIR)/geoip-cn.srs $(CLIENT_GEOIP_CN_URL); \
+	elif command -v wget >/dev/null 2>&1; then \
+		wget -q --tries=3 -O $(CLIENT_RULESET_DIR)/geosite-cn.srs $(CLIENT_GEOSITE_CN_URL); \
+		wget -q --tries=3 -O $(CLIENT_RULESET_DIR)/geoip-cn.srs $(CLIENT_GEOIP_CN_URL); \
+	else \
+		echo "Error: Neither curl nor wget found. Please install one first."; \
+		exit 1; \
+	fi
+	@echo "Client rule sets downloaded to $(CLIENT_RULESET_DIR)"
+
 client-up:
 	docker compose -f client/docker-compose.yml --env-file .env.client up -d
 
@@ -218,5 +237,6 @@ client-logs-hy2:
 
 client-clear:
 	rm -rf client/config/config.json
+	rm -rf client/config/rule-set
 	rm -rf client/hy2-config/config.yaml
 	rm -rf .env.client

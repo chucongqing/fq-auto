@@ -47,6 +47,7 @@
 - 一台 Linux 服务器（推荐 Ubuntu / Debian / CentOS / Alpine）
 - 一个自己的域名，并已解析到服务器 IP
 - 已安装 `make` 和 `envsubst` (通常 `apt install gettext-base`)
+- 如需生成局域网客户端配置，另外安装 `jq`（用于应用客户端协议/WARP 开关）
 - 已安装 [acme.sh](https://github.com/acmesh-official/acme.sh) 用于自动签发 SSL 证书
 
 ### 二选一（两种模式只需要满足其一）
@@ -474,15 +475,21 @@ journalctl -u sing-box -f
    根据服务器配置，填写对应的主机名、端口、密码或密钥等。
    > **注意**：VLESS REALITY 的公钥 `CLIENT_VLESS_REALITY_PUBLIC_KEY` 需要填入服务器上 `xray x25519` 生成的公钥（Public key），而不是私钥。
 
-3. **生成客户端配置文件**：
+3. **下载本地 rule set**：
+   ```bash
+   make client-download-ruleset
+   ```
+   rule set 会保存到 `client/config/rule-set/`，并挂载到容器内的 `/etc/sing-box/rule-set/`。
+
+4. **生成客户端配置文件**：
    ```bash
    make client-template
    ```
-   脚本会同时生成两个配置：
+   命令会使用客户端模板和 `.env.client` 渲染两个配置；其中 `jq` 负责应用协议及 WARP 开关：
    - `client/config/config.json` — sing-box 配置（多协议出站 + Mixed 入站）
    - `client/hy2-config/config.yaml` — Hysteria 2 原生客户端配置（SOCKS5 + HTTP 入站）
 
-4. **启动客户端服务**：
+5. **启动客户端服务**：
    ```bash
    # 启动全部客户端服务
    make client-up
@@ -513,6 +520,7 @@ journalctl -u sing-box -f
 | 命令 | 作用 |
 |------|------|
 | `make client-env` | 初始化客户端 `.env.client` 配置 |
+| `make client-download-ruleset` | 下载 sing-box 本地 geosite/geoip rule set |
 | `make client-template` | 生成 sing-box 和 Hysteria 2 客户端配置 |
 | `make client-up` | 启动全部客户端容器 |
 | `make client-down` | 停止全部客户端容器 |

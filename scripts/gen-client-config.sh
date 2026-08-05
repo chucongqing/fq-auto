@@ -1,9 +1,11 @@
 #!/bin/bash
+set -e
 
-# Get the script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$ROOT_DIR/.env.client"
+TEMPLATE_FILE="$ROOT_DIR/client/config/config.json.template"
+OUTPUT_FILE="$ROOT_DIR/client/config/config.json"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Error: .env.client file not found!"
@@ -11,69 +13,81 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Source the env file
+if ! command -v envsubst >/dev/null 2>&1; then
+  echo "Error: envsubst not found. Please install gettext-base first."
+  exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq not found. jq is required to apply client protocol switches."
+  exit 1
+fi
+
+set -a
 source "$ENV_FILE"
+set +a
 
-# Resolve per-protocol server addresses (fallback to default SERVER_ADDR)
-CLIENT_VLESS_SERVER="${CLIENT_VLESS_SERVER:-$SERVER_ADDR}"
-CLIENT_HY2_SERVER="${CLIENT_HY2_SERVER:-$SERVER_ADDR}"
-CLIENT_TUIC_SERVER="${CLIENT_TUIC_SERVER:-$SERVER_ADDR}"
-CLIENT_ANYTLS_SERVER="${CLIENT_ANYTLS_SERVER:-$SERVER_ADDR}"
+# Resolve per-protocol server addresses (fallback to default SERVER_ADDR).
+CLIENT_VLESS_SERVER="${CLIENT_VLESS_SERVER:-${SERVER_ADDR:-}}"
+CLIENT_HY2_SERVER="${CLIENT_HY2_SERVER:-${SERVER_ADDR:-}}"
+CLIENT_TUIC_SERVER="${CLIENT_TUIC_SERVER:-${SERVER_ADDR:-}}"
+CLIENT_ANYTLS_SERVER="${CLIENT_ANYTLS_SERVER:-${SERVER_ADDR:-}}"
 
-# Resolve per-protocol TLS server names (fallback to corresponding server address)
+# Resolve per-protocol TLS server names (fallback to corresponding server address).
 CLIENT_HY2_SERVER_NAME="${CLIENT_HY2_SERVER_NAME:-$CLIENT_HY2_SERVER}"
 CLIENT_TUIC_SERVER_NAME="${CLIENT_TUIC_SERVER_NAME:-$CLIENT_TUIC_SERVER}"
 CLIENT_ANYTLS_SERVER_NAME="${CLIENT_ANYTLS_SERVER_NAME:-$CLIENT_ANYTLS_SERVER}"
 
-# Make sure config output directory exists
-mkdir -p "$ROOT_DIR/client/config"
-OUTPUT_FILE="$ROOT_DIR/client/config/config.json"
+# Keep the complete template valid while jq removes disabled protocol blocks.
+# Enabled protocols still need their real values in .env.client.
+CLIENT_VLESS_PORT="${CLIENT_VLESS_PORT:-0}"
+CLIENT_HY2_PORT="${CLIENT_HY2_PORT:-0}"
+CLIENT_TUIC_PORT="${CLIENT_TUIC_PORT:-0}"
+CLIENT_ANYTLS_PORT="${CLIENT_ANYTLS_PORT:-0}"
+CLIENT_MIXED_PORT="${CLIENT_MIXED_PORT:-0}"
+CLIENT_WARP_PORT="${CLIENT_WARP_PORT:-0}"
+export CLIENT_VLESS_PORT CLIENT_HY2_PORT CLIENT_TUIC_PORT CLIENT_ANYTLS_PORT
+export CLIENT_MIXED_PORT CLIENT_WARP_PORT
+export CLIENT_VLESS_SERVER CLIENT_HY2_SERVER CLIENT_TUIC_SERVER CLIENT_ANYTLS_SERVER
+export CLIENT_HY2_SERVER_NAME CLIENT_TUIC_SERVER_NAME CLIENT_ANYTLS_SERVER_NAME
 
-# Validate at least one protocol is enabled
 ENABLED_TAGS=()
-if [ "$ENABLE_VLESS" = "true" ]; then ENABLED_TAGS+=("vless"); fi
-if [ "$ENABLE_HY2" = "true" ]; then ENABLED_TAGS+=("hy2"); fi
-if [ "$ENABLE_TUIC" = "true" ]; then ENABLED_TAGS+=("tuic"); fi
-if [ "$ENABLE_ANYTLS" = "true" ]; then ENABLED_TAGS+=("anytls"); fi
+if [ "${ENABLE_VLESS:-false}" = "true" ]; then ENABLED_TAGS+=("vless"); fi
+if [ "${ENABLE_HY2:-false}" = "true" ]; then ENABLED_TAGS+=("hy2"); fi
+if [ "${ENABLE_TUIC:-false}" = "true" ]; then ENABLED_TAGS+=("tuic"); fi
+if [ "${ENABLE_ANYTLS:-false}" = "true" ]; then ENABLED_TAGS+=("anytls"); fi
 
 if [ ${#ENABLED_TAGS[@]} -eq 0 ]; then
   echo "Error: No protocols enabled. Please enable at least one protocol in .env.client"
   exit 1
 fi
 
-# Format join helper
-join_by_quotes() {
-  local first=1
-  for item in "$@"; do
-    if [ $first -eq 1 ]; then
-      first=0
-    else
-      echo -n ","
-    fi
-    echo -n "\"$item\""
-  done
-}
+# The old generator falls back to auto when DEFAULT_OUTBOUND is disabled/unknown.
+CLIENT_DEFAULT_OUTBOUND="auto"
+for tag in "${ENABLED_TAGS[@]}"; do
+  if [ "${DEFAULT_OUTBOUND:-}" = "$tag" ]; then
+    CLIENT_DEFAULT_OUTBOUND="$tag"
+    break
+  fi
+done
+export CLIENT_DEFAULT_OUTBOUND
 
-# Parse DNS servers helper (supports legacy URL and new schemas)
+# Parse DNS values into the sing-box DNS server object accepted by the template.
 parse_dns_server() {
   local tag="$1"
   local dns_val="$2"
   local detour="$3"
-  
   local type=""
   local server=""
   local server_port=""
   local path=""
-  
+
   if [[ "$dns_val" =~ ^(tls|https|quic|h3|tcp|udp)://([^/]+)(/.*)?$ ]]; then
     type="${BASH_REMATCH[1]}"
     local host_port="${BASH_REMATCH[2]}"
     path="${BASH_REMATCH[3]}"
-    
-    if [ "$path" = "/" ]; then
-      path=""
-    fi
-    
+    [ "$path" = "/" ] && path=""
+
     if [[ "$host_port" =~ ^([^:]+):([0-9]+)$ ]]; then
       server="${BASH_REMATCH[1]}"
       server_port="${BASH_REMATCH[2]}"
@@ -81,7 +95,6 @@ parse_dns_server() {
       server="$host_port"
     fi
   else
-    # Default to udp if no scheme is specified
     type="udp"
     if [[ "$dns_val" =~ ^([^:]+):([0-9]+)$ ]]; then
       server="${BASH_REMATCH[1]}"
@@ -91,7 +104,6 @@ parse_dns_server() {
     fi
   fi
 
-  # Build JSON block with proper indentation (6 spaces)
   local json="      {\n        \"tag\": \"$tag\",\n        \"type\": \"$type\",\n        \"server\": \"$server\""
   if [ -n "$server_port" ]; then
     json="$json,\n        \"server_port\": $server_port"
@@ -103,370 +115,63 @@ parse_dns_server() {
     json="$json,\n        \"detour\": \"$detour\""
   fi
   json="$json\n      }"
-  printf "%b" "$json"
+  printf -v "$4" '%b' "$json"
 }
 
-# 1. Build enabled outbounds JSON array
-OUTBOUNDS_LIST=()
+parse_dns_server remote-dns "${REMOTE_DNS:-}" proxy REMOTE_DNS_JSON
+parse_dns_server local-dns "${LOCAL_DNS:-}" "" LOCAL_DNS_JSON
+export REMOTE_DNS_JSON LOCAL_DNS_JSON
 
-# VLESS Reality Outbound
-if [ "$ENABLE_VLESS" = "true" ]; then
-  OUTBOUNDS_LIST+=("$(cat <<EOF
-    {
-      "type": "vless",
-      "tag": "vless",
-      "server": "$CLIENT_VLESS_SERVER",
-      "server_port": $CLIENT_VLESS_PORT,
-      "uuid": "$CLIENT_VLESS_UUID",
-      "flow": "xtls-rprx-vision",
-      "tls": {
-        "enabled": true,
-        "server_name": "$CLIENT_VLESS_SERVER_NAME",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        },
-        "reality": {
-          "enabled": true,
-          "public_key": "$CLIENT_VLESS_REALITY_PUBLIC_KEY",
-          "short_id": "$CLIENT_VLESS_REALITY_SHORT_ID"
-        }
-      }
-    }
-EOF
-)")
-fi
+mkdir -p "$ROOT_DIR/client/config"
+RENDERED_FILE="$(mktemp)"
+trap 'rm -f "$RENDERED_FILE"' EXIT
 
-# Hysteria 2 Outbound
-if [ "$ENABLE_HY2" = "true" ]; then
-  OUTBOUNDS_LIST+=("$(cat <<EOF
-    {
-      "type": "hysteria2",
-      "tag": "hy2",
-      "server": "$CLIENT_HY2_SERVER",
-      "server_port": $CLIENT_HY2_PORT,
-      "password": "$CLIENT_HY2_PASSWORD",
-      "tls": {
-        "enabled": true,
-        "server_name": "$CLIENT_HY2_SERVER_NAME",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        }
-      }
-    }
-EOF
-)")
-fi
+# Keep envsubst restricted to variables declared by .env.client plus derived values.
+VARS_EXTRACTED="$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" | cut -d= -f1 | sed 's/^/\$/')"
+VARS_EXTRACTED="$VARS_EXTRACTED \$REMOTE_DNS_JSON \$LOCAL_DNS_JSON \$CLIENT_DEFAULT_OUTBOUND"
+envsubst "$VARS_EXTRACTED" < "$TEMPLATE_FILE" > "$RENDERED_FILE"
 
-# TUIC Outbound
-if [ "$ENABLE_TUIC" = "true" ]; then
-  OUTBOUNDS_LIST+=("$(cat <<EOF
-    {
-      "type": "tuic",
-      "tag": "tuic",
-      "server": "$CLIENT_TUIC_SERVER",
-      "server_port": $CLIENT_TUIC_PORT,
-      "uuid": "$CLIENT_TUIC_UUID",
-      "password": "$CLIENT_TUIC_PASSWORD",
-      "congestion_control": "bbr",
-      "tls": {
-        "enabled": true,
-        "server_name": "$CLIENT_TUIC_SERVER_NAME",
-        "alpn": [
-          "h3"
-        ],
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        }
-      }
-    }
-EOF
-)")
-fi
+# Apply ENABLE_* and ENABLE_WARP without putting conditional JSON construction in Bash.
+jq \
+  --arg enable_vless "${ENABLE_VLESS:-false}" \
+  --arg enable_hy2 "${ENABLE_HY2:-false}" \
+  --arg enable_tuic "${ENABLE_TUIC:-false}" \
+  --arg enable_anytls "${ENABLE_ANYTLS:-false}" \
+  --arg enable_warp "${ENABLE_WARP:-false}" \
+  --arg default_outbound "$CLIENT_DEFAULT_OUTBOUND" \
+  '
+    def enabled($tag):
+      ($tag == "vless" and $enable_vless == "true") or
+      ($tag == "hy2" and $enable_hy2 == "true") or
+      ($tag == "tuic" and $enable_tuic == "true") or
+      ($tag == "anytls" and $enable_anytls == "true");
 
-# AnyTLS Outbound
-if [ "$ENABLE_ANYTLS" = "true" ]; then
-  OUTBOUNDS_LIST+=("$(cat <<EOF
-    {
-      "type": "anytls",
-      "tag": "anytls",
-      "server": "$CLIENT_ANYTLS_SERVER",
-      "server_port": $CLIENT_ANYTLS_PORT,
-      "password": "$CLIENT_ANYTLS_PASSWORD",
-      "tls": {
-        "enabled": true,
-        "server_name": "$CLIENT_ANYTLS_SERVER_NAME",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        }
-      }
-    }
-EOF
-)")
-fi
+    .outbounds |= map(
+      if .tag == "proxy" or .tag == "auto" then
+        .outbounds |= map(select(. == "auto" or enabled(.))) |
+        if .tag == "proxy" then .default = $default_outbound else . end
+      elif (.tag == "vless" or .tag == "hy2" or .tag == "tuic" or .tag == "anytls") and
+           (enabled(.tag) | not) then
+        empty
+      elif .tag == "warp" and $enable_warp != "true" then
+        empty
+      else
+        .
+      end
+    ) |
+    .route.rules |= map(select($enable_warp == "true" or .outbound != "warp"))
+  ' "$RENDERED_FILE" > "$OUTPUT_FILE"
 
-# Selectors / URL Test Outbounds
-SELECTOR_TAGS=()
-SELECTOR_TAGS+=("auto")
-for tag in "${ENABLED_TAGS[@]}"; do
-  SELECTOR_TAGS+=("$tag")
-done
-
-# Resolve default outbound tag
-DEFAULT_TAG="auto"
-for tag in "${ENABLED_TAGS[@]}"; do
-  if [ "$DEFAULT_OUTBOUND" = "$tag" ]; then
-    DEFAULT_TAG="$tag"
-    break
-  fi
-done
-
-# Build auto (urltest) and proxy (selector) outbounds
-AUTO_OUTBOUNDS_CSV=$(join_by_quotes "${ENABLED_TAGS[@]}")
-SELECTOR_OUTBOUNDS_CSV=$(join_by_quotes "${SELECTOR_TAGS[@]}")
-
-PROXY_OUTBOUNDS="$(cat <<EOF
-    {
-      "type": "selector",
-      "tag": "proxy",
-      "outbounds": [
-        $SELECTOR_OUTBOUNDS_CSV
-      ],
-      "default": "$DEFAULT_TAG"
-    },
-    {
-      "type": "urltest",
-      "tag": "auto",
-      "outbounds": [
-        $AUTO_OUTBOUNDS_CSV
-      ],
-      "url": "https://cp.cloudflare.com/generate_204",
-      "interval": "3m0s",
-      "tolerance": 50
-    }
-EOF
-)"
-
-# WARP Outbound (if enabled)
-WARP_OUTBOUND=""
-if [ "$ENABLE_WARP" = "true" ]; then
-  WARP_OUTBOUND=",
-    {
-      "type": "socks",
-      "tag": "warp",
-      "server": "$CLIENT_WARP_SERVER",
-      "server_port": $CLIENT_WARP_PORT
-    }"
-fi
-
-# Standard Outbounds
-STANDARD_OUTBOUNDS=",
-    {
-      \"type\": \"direct\",
-      \"tag\": \"direct\"
-    }"
-
-# Join all outbounds
-ALL_OUTBOUNDS_JSON=""
-for ob in "${OUTBOUNDS_LIST[@]}"; do
-  if [ -n "$ALL_OUTBOUNDS_JSON" ]; then
-    ALL_OUTBOUNDS_JSON="$ALL_OUTBOUNDS_JSON,
-$ob"
-  else
-    ALL_OUTBOUNDS_JSON="$ob"
-  fi
-done
-
-# WARP Routing rules (if enabled)
-WARP_ROUTE_RULE=""
-if [ "$ENABLE_WARP" = "true" ]; then
-  WARP_ROUTE_RULE="{
-        \"domain_suffix\": [
-          \"google.com\",
-          \"googleapis.com\",
-          \"googleusercontent.com\",
-          \"gstatic.com\",
-          \"gvt1.com\",
-          \"gvt2.com\",
-          \"gvt3.com\",
-          \"ggpht.com\",
-          \"android.com\",
-          \"openai.com\",
-          \"chatgpt.com\",
-          \"gemini.google.com\"
-        ],
-        \"action\": \"route\",
-        \"outbound\": \"warp\"
-      },"
-fi
-
-# Parse DNS servers
-REMOTE_DNS_JSON=$(parse_dns_server "remote-dns" "$REMOTE_DNS" "proxy")
-LOCAL_DNS_JSON=$(parse_dns_server "local-dns" "$LOCAL_DNS" "")
-
-# Build config.json
-cat <<EOF > "$OUTPUT_FILE"
-{
-  "log": {
-    "level": "info"
-  },
-  "dns": {
-    "servers": [
-$REMOTE_DNS_JSON,
-$LOCAL_DNS_JSON
-    ],
-    "rules": [
-      {
-        "clash_mode": "direct",
-        "server": "local-dns"
-      },
-      {
-        "clash_mode": "global",
-        "server": "remote-dns"
-      },
-      {
-        "domain_suffix": [
-          "cn",
-          "local",
-          "lan"
-        ],
-        "server": "local-dns"
-      },
-      {
-        "rule_set": [
-          "geosite-cn"
-        ],
-        "server": "local-dns"
-      }
-    ],
-    "final": "remote-dns",
-    "strategy": "ipv4_only"
-  },
-  "inbounds": [
-    {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen": "$CLIENT_MIXED_LISTEN",
-      "listen_port": $CLIENT_MIXED_PORT
-    }
-  ],
-  "outbounds": [
-    $PROXY_OUTBOUNDS,
-    $ALL_OUTBOUNDS_JSON$WARP_OUTBOUND$STANDARD_OUTBOUNDS
-  ],
-  "route": {
-    "default_domain_resolver": "local-dns",
-    "rules": [
-      {
-        "action": "sniff"
-      },
-      {
-        "type": "logical",
-        "mode": "or",
-        "rules": [
-          {
-            "port": 53
-          },
-          {
-            "protocol": "dns"
-          }
-        ],
-        "action": "hijack-dns"
-      },
-      {
-        "ip_is_private": true,
-        "action": "route",
-        "outbound": "direct"
-      },
-      {
-        "clash_mode": "direct",
-        "action": "route",
-        "outbound": "direct"
-      },
-      {
-        "clash_mode": "global",
-        "action": "route",
-        "outbound": "proxy"
-      },
-      $WARP_ROUTE_RULE
-      {
-        "domain_suffix": [
-          "cn",
-          "local",
-          "lan"
-        ],
-        "action": "route",
-        "outbound": "direct"
-      },
-      {
-        "rule_set": [
-          "geosite-cn"
-        ],
-        "action": "route",
-        "outbound": "direct"
-      },
-      {
-        "rule_set": [
-          "geoip-cn"
-        ],
-        "action": "route",
-        "outbound": "direct"
-      }
-    ],
-    "rule_set": [
-      {
-        "tag": "geosite-cn",
-        "type": "remote",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "proxy"
-      },
-      {
-        "tag": "geoip-cn",
-        "type": "remote",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "proxy"
-      }
-    ],
-    "final": "proxy",
-    "auto_detect_interface": true
-  }
-}
-EOF
+echo "Client sing-box config generated successfully at: $OUTPUT_FILE"
 
 # ============================================================
 # Generate Hysteria 2 client config (standalone client mode)
 # ============================================================
 HY2_CONFIG_DIR="$ROOT_DIR/client/hy2-config"
-mkdir -p "$HY2_CONFIG_DIR"
 HY2_OUTPUT_FILE="$HY2_CONFIG_DIR/config.yaml"
+HY2_TEMPLATE_FILE="$ROOT_DIR/client/hy2-config/config.yaml.template"
+mkdir -p "$HY2_CONFIG_DIR"
+envsubst "$VARS_EXTRACTED" < "$HY2_TEMPLATE_FILE" > "$HY2_OUTPUT_FILE"
 
-cat <<EOF > "$HY2_OUTPUT_FILE"
-server: "$CLIENT_HY2_SERVER:$CLIENT_HY2_PORT"
-auth: "$CLIENT_HY2_PASSWORD"
-socks5:
-  listen: "0.0.0.0:$CLIENT_HY2_SOCKS5_PORT"
-http:
-  listen: "0.0.0.0:$CLIENT_HY2_HTTP_PORT"
-tls:
-  sni: "$CLIENT_HY2_SERVER_NAME"
-EOF
-
-echo "Client config generated successfully at: $OUTPUT_FILE"
-echo "Hysteria 2 client config generated at: $HY2_OUTPUT_FILE"
-
-# Validate JSON syntax
-if command -v jq >/dev/null 2>&1; then
-  if ! jq empty "$OUTPUT_FILE" >/dev/null 2>&1; then
-    echo "Error: $OUTPUT_FILE is not valid JSON"
-    exit 1
-  fi
-  echo "JSON validation passed."
-else
-  echo "Warning: jq not found, skipping JSON validation"
-fi
-
+echo "Hysteria 2 client config generated successfully at: $HY2_OUTPUT_FILE"
+echo "JSON validation passed."
