@@ -51,10 +51,6 @@ inline = [
   "warp_proxy(suffix:ggpht.com)",
   "warp_proxy(suffix:android.com)",
 
-  # OpenAI / ChatGPT -> WARP (optional)
-  "warp_proxy(suffix:openai.com)",
-  "warp_proxy(suffix:chatgpt.com)",
-
   # Everything else -> direct
   "direct_out(all)"
 ]
