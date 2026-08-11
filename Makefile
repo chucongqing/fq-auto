@@ -28,7 +28,7 @@ export
 	client-start-hy2 client-stop-hy2 client-restart-hy2 client-logs-hy2 client-clear
 
 help: ## 显示所有可用的 make 目标（默认目标）
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 init: ## 初始化目录结构与脚本权限（/var/www/cert、/etc/ssl、reload.sh）
