@@ -62,8 +62,9 @@ if [ ${#ENABLED_TAGS[@]} -eq 0 ]; then
   exit 1
 fi
 
-# The old generator falls back to auto when DEFAULT_OUTBOUND is disabled/unknown.
-CLIENT_DEFAULT_OUTBOUND="auto"
+# 默认出口：优先取 DEFAULT_OUTBOUND（需在启用列表中），否则取第一个启用的协议。
+# 没有 selector/urltest，路由直接指向该 outbound。
+CLIENT_DEFAULT_OUTBOUND="${ENABLED_TAGS[0]}"
 for tag in "${ENABLED_TAGS[@]}"; do
   if [ "${DEFAULT_OUTBOUND:-}" = "$tag" ]; then
     CLIENT_DEFAULT_OUTBOUND="$tag"
@@ -118,7 +119,7 @@ parse_dns_server() {
   printf -v "$4" '%b' "$json"
 }
 
-parse_dns_server remote-dns "${REMOTE_DNS:-}" proxy REMOTE_DNS_JSON
+parse_dns_server remote-dns "${REMOTE_DNS:-}" "$CLIENT_DEFAULT_OUTBOUND" REMOTE_DNS_JSON
 parse_dns_server local-dns "${LOCAL_DNS:-}" "" LOCAL_DNS_JSON
 export REMOTE_DNS_JSON LOCAL_DNS_JSON
 
@@ -138,7 +139,6 @@ jq \
   --arg enable_tuic "${ENABLE_TUIC:-false}" \
   --arg enable_anytls "${ENABLE_ANYTLS:-false}" \
   --arg enable_warp "${ENABLE_WARP:-false}" \
-  --arg default_outbound "$CLIENT_DEFAULT_OUTBOUND" \
   '
     def enabled($tag):
       ($tag == "vless" and $enable_vless == "true") or
@@ -147,11 +147,8 @@ jq \
       ($tag == "anytls" and $enable_anytls == "true");
 
     .outbounds |= map(
-      if .tag == "proxy" or .tag == "auto" then
-        .outbounds |= map(select(. == "auto" or enabled(.))) |
-        if .tag == "proxy" then .default = $default_outbound else . end
-      elif (.tag == "vless" or .tag == "hy2" or .tag == "tuic" or .tag == "anytls") and
-           (enabled(.tag) | not) then
+      if (.tag == "vless" or .tag == "hy2" or .tag == "tuic" or .tag == "anytls") and
+         (enabled(.tag) | not) then
         empty
       elif .tag == "warp" and $enable_warp != "true" then
         empty
@@ -163,6 +160,12 @@ jq \
   ' "$RENDERED_FILE" > "$OUTPUT_FILE"
 
 echo "Client sing-box config generated successfully at: $OUTPUT_FILE"
+
+# 校验默认出口确实存在于生成的配置中，防止 DEFAULT_OUTBOUND 指向不存在的 outbound
+if ! jq -e --arg tag "$CLIENT_DEFAULT_OUTBOUND" '.outbounds | any(.tag == $tag)' "$OUTPUT_FILE" >/dev/null 2>&1; then
+  echo "Error: DEFAULT_OUTBOUND=$CLIENT_DEFAULT_OUTBOUND 不存在于生成的 outbounds 中，请检查 .env.client"
+  exit 1
+fi
 
 # ============================================================
 # Generate Hysteria 2 client config (standalone client mode)

@@ -44,25 +44,6 @@ $LOCAL_DNS_JSON
   ],
   "outbounds": [
     {
-      "type": "selector",
-      "tag": "proxy",
-      "outbounds": [
-        "auto",
-        "tuic"
-      ],
-      "default": "auto"
-    },
-    {
-      "type": "urltest",
-      "tag": "auto",
-      "outbounds": [
-        "tuic"
-      ],
-      "url": "https://cp.cloudflare.com/generate_204",
-      "interval": "3m0s",
-      "tolerance": 50
-    },
-    {
       "type": "tuic",
       "tag": "tuic",
       "server": "$CLIENT_TUIC_SERVER",
@@ -77,7 +58,7 @@ $LOCAL_DNS_JSON
           "h3"
         ],
         "utls": {
-          "enabled": true,
+          "enabled": false,
           "fingerprint": "chrome"
         }
       }
@@ -140,7 +121,7 @@ $LOCAL_DNS_JSON
       {
         "clash_mode": "global",
         "action": "route",
-        "outbound": "proxy"
+        "outbound": "$CLIENT_DEFAULT_OUTBOUND"
       },
       {
         "domain_suffix": [
@@ -198,7 +179,7 @@ $LOCAL_DNS_JSON
         "path": "/etc/sing-box/rule-set/geoip-cn.srs"
       }
     ],
-    "final": "proxy",
+    "final": "$CLIENT_DEFAULT_OUTBOUND",
     "auto_detect_interface": true
   }
 }
