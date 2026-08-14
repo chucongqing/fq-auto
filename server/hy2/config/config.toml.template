@@ -1,4 +1,4 @@
-listen = $HY2_ADDR
+listen = ${HY2_ADDR}
 
 [tls]
 cert = "/etc/ssl/cert.pem"
@@ -7,7 +7,7 @@ sniGuard = "disable"
 
 [auth]
 type = "password"
-password = "$HY2_PASSWORD"
+password = "${HY2_PASSWORD}"
 
 [masquerade]
 type = "proxy"
@@ -33,7 +33,7 @@ type = "direct"
 name = "warp_proxy"
 type = "socks5"
 [outbounds.socks5]
-addr = "$HY2_WARP_ADDR"
+addr = "${HY2_WARP_ADDR}"
 
 # ========== ACL Routing ==========
 # Syntax: outbound_name(matcher) — NOT outbound(matcher, outbound_name)

@@ -16,7 +16,8 @@ export
 # 不指定目标时，默认显示帮助
 .DEFAULT_GOAL := help
 
-.PHONY: help init env clear clear-systemd clear-nginx-systemd template \
+.PHONY: help init env clear clear-systemd clear-nginx-systemd \
+	config-server config-client config-all config-check template \
 	issue_cert install_cert up up-nginx up-hy2 up-xray up-singbox \
 	restart-docker-nginx restart-docker-hy2 restart-docker-xray restart-docker-singbox \
 	install-bin install-nginx install-systemd install-nginx-systemd \
@@ -54,13 +55,19 @@ clear-systemd: ## 清理 /usr/local/etc 下的 systemd 配置文件
 clear-nginx-systemd: ## 删除 /etc/nginx/conf.d/acme.conf
 	rm -f /etc/nginx/conf.d/acme.conf
 
-template: ## 用 envsubst 渲染 4 个服务的配置模板（需先 make env）
-	-mkdir -p server/hy2/config server/nginx/conf server/xray/config server/sing-box/config
-	VARS_EXTRACTED=$$(grep -v '^#' .env | cut -d= -f1 | sed 's/^/$$/' | paste -sd, -) && \
-	envsubst "$$VARS_EXTRACTED" < server/hy2/config/config.toml.template > server/hy2/config/config.toml && \
-	envsubst "$$VARS_EXTRACTED" < server/nginx/acme.conf.template > server/nginx/conf/acme.conf && \
-	envsubst "$$VARS_EXTRACTED" < server/xray/config/config.json.template > server/xray/config/config.json && \
-	envsubst "$$VARS_EXTRACTED" < server/sing-box/config/config.json.template > server/sing-box/config/config.json
+config-server: ## 统一生成服务端配置（需先 make env）
+	bash "$(CUR_DIR)/scripts/config/render.sh" server
+
+config-client: ## 统一生成客户端配置（需先 make client-env）
+	bash "$(CUR_DIR)/scripts/config/render.sh" client
+
+config-all: ## 同时生成服务端和客户端配置
+	bash "$(CUR_DIR)/scripts/config/render.sh" all
+
+config-check: ## 校验环境文件、已生成配置和可用的服务端语义
+	bash "$(CUR_DIR)/scripts/config/render.sh" check
+
+template: config-server ## 兼容旧命令：生成服务端配置
 
 issue_cert: ## 用 acme.sh 签发证书（Let's Encrypt, EC-256）
 	~/.acme.sh/acme.sh --issue --force \
@@ -198,9 +205,7 @@ restart-singbox: ## 重启 sing-box 服务
 client-env: ## 生成 .env.client（复制自 .env.client.template）
 	cp .env.client.template .env.client
 
-client-template: ## 生成客户端配置（client/config/config.json 与 hy2-config/config.yaml）
-	chmod +x $(CUR_DIR)/scripts/gen-client-config.sh
-	$(CUR_DIR)/scripts/gen-client-config.sh
+client-template: config-client ## 兼容旧命令：生成客户端配置
 
 client-download-ruleset: ## 下载 geosite-cn / geoip-cn 规则集到 client/config/rule-set
 	set -e; \

@@ -5,13 +5,6 @@ set -e
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(dirname "$SCRIPT_DIR")
 
-# 加载 .env 变量供 envsubst 使用
-if [ -f "$ROOT_DIR/.env" ]; then
-    set -a
-    source "$ROOT_DIR/.env"
-    set +a
-fi
-
 ACTION="${1:-proxies}"
 
 case "$ACTION" in
@@ -33,7 +26,7 @@ esac
 echo "[systemd] Installing service files for: $SERVICES ..."
 
 for svc in $SERVICES; do
-    SRC="$ROOT_DIR/systemd/${svc}.service.template"
+    SRC="$ROOT_DIR/systemd/${svc}.service"
     DST="/etc/systemd/system/${svc}.service"
 
     if [ ! -f "$SRC" ]; then
@@ -41,8 +34,7 @@ for svc in $SERVICES; do
         continue
     fi
 
-    envsubst < "$SRC" > "$DST"
-    chmod 644 "$DST"
+    install -m 0644 "$SRC" "$DST"
     echo "[systemd] Installed ${svc}.service"
 done
 

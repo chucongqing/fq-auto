@@ -15,7 +15,7 @@
 | 层面 | 技术 |
 |------|------|
 | 编排入口 | GNU Make（`Makefile`，唯一命令入口） |
-| 配置渲染 | `envsubst`（来自 `gettext-base`），从 `.env` 提取变量名列表后做受限替换 |
+| 配置渲染 | `scripts/config/render.sh` 统一入口；文本用受限 `envsubst`，JSON 用 `jq` |
 | 服务端运行时 | Docker Compose **或** systemd（二选一） |
 | 证书 | acme.sh（Let's Encrypt，EC-256，安装到 `/etc/ssl`，`--reloadcmd` 挂钩重载脚本） |
 | 脚本 | Bash（`scripts/*.sh`，`set -e`） |
@@ -40,9 +40,9 @@
 
 ### 客户端（局域网共享代理，Docker Compose）
 
-`client/docker-compose.yml` 定义两个独立容器，由 `scripts/gen-client-config.sh` 从 `.env.client` 生成配置（纯 Bash heredoc 拼 JSON，非 envsubst）：
+`client/docker-compose.yml` 定义两个独立容器，由 `scripts/config/render.sh client` 生成配置；`scripts/gen-client-config.sh` 仅保留为兼容包装：
 
-- `sing-box-client`：Mixed 入站（SOCKS5+HTTP，:7890），VLESS/HY2/TUIC/AnyTLS 多协议出站 + urltest/selector 自动选路 + geoip/geosite-cn 分流。
+- `sing-box-client`：Mixed 入站（SOCKS5+HTTP，:7890），VLESS/HY2/TUIC/AnyTLS 多协议出站 + 默认出口选择 + geoip/geosite-cn 分流。
 - `hysteria2-client`：原生 HY2 客户端，SOCKS5 :7891 / HTTP :7892。
 
 ### 目录速查
@@ -53,7 +53,7 @@ Makefile               # 所有操作的唯一入口
 .env.client.template   # 客户端配置模板（make client-env 复制为 .env.client）
 scripts/               # Bash 脚本（安装、渲染、重载）
 server/                # 服务端 4 个服务的 docker-compose.yml + 配置模板
-systemd/               # hy2 / nginx / sing-box 的 .service.template（注意：没有 xray）
+systemd/               # hy2 / nginx / sing-box 的静态 .service（注意：没有 xray）
 client/                # 客户端 docker-compose.yml（生成物在 client/config、client/hy2-config）
 doc/sing-box/          # sing-box 上游文档片段（参考用）
 need/wrapit.md         # HY2 + WARP 解锁 Gemini 的排错笔记（参考用）
@@ -65,19 +65,21 @@ temp/                  # 本地日志（已 gitignore）
 ## 核心机制：配置渲染流程
 
 1. `make env` 复制 `.env.example` → `.env`；用户填写域名、UUID、密码等。
-2. `make template` 用 `grep -v '^#' .env | cut -d= -f1` 提取变量名清单，传给 `envsubst "$VARS"` 做**受限变量替换**（只替换 `.env` 里声明过的变量，保护模板中 Nginx 的 `$host` 等字面量），生成：
+2. `make config-server`（`make template` 仍是兼容别名）调用统一渲染入口。文本模板使用显式变量白名单传给受限 `envsubst`，保护模板中 Nginx 的 `$host` 等字面量；JSON 模板由独立 jq filter 注入字符串、数字和数组。生成：
    - `server/hy2/config/config.toml`
    - `server/nginx/conf/acme.conf`
    - `server/xray/config/config.json`
    - `server/sing-box/config/config.json`
-3. 生成物全部被 `.gitignore` 排除，**绝不提交**。
-4. 证书：`make issue_cert` + `make install_cert`（acme.sh → `/etc/ssl/{cert,key.pem}`，`--reloadcmd` 指向 `scripts/reload.sh`，续期后自动重载）。
+3. `make config-client` 生成客户端 sing-box JSON 与 HY2 YAML；`make config-all` 要求两个 env 文件都存在，并在全部目标通过校验后一次性提交。
+4. 生成物全部被 `.gitignore` 排除，**绝不提交**。
+5. 证书：`make issue_cert` + `make install_cert`（acme.sh → `/etc/ssl/{cert,key.pem}`，`--reloadcmd` 指向 `scripts/reload.sh`，续期后自动重载）。
 
 ## 常用命令
 
 ```bash
 # 初始化与渲染
 make init / env / template
+make config-server / config-client / config-all / config-check
 
 # Docker 模式
 make up                    # 重启全部 4 个容器（调用 scripts/reload.sh）
@@ -103,25 +105,25 @@ make client-up / client-down / client-logs-singbox 等
 
 - `bash -n scripts/xxx.sh` —— Shell 语法检查。
 - `make template` 后人工检查生成物变量是否替换完全（不应残留 `$VAR`）。
-- `scripts/gen-client-config.sh` 内置 `jq empty` 校验生成的 JSON（有 jq 时自动执行）。
+- `bash scripts/config/*.sh -n` 检查渲染脚本语法；`jq empty` 检查生成 JSON；`make config-check` 会在可用时追加 sing-box/xray/nginx 语义检查。
 - `make sys-template-nginx` 会跑 `nginx -t`（容错 `|| true`）。
 - 端到端验证只能在真实 Linux 服务器上做：`docker ps` / `systemctl status` + `journalctl -u <svc> -f`。
 
 ## 代码与配置约定
 
-- **行尾**：`.gitattributes` 强制 `*.sh`、`*.yml`、`*.json`、`*.toml`、`*.md`、`*.conf`、`Makefile` 全部 LF。在 Windows 上编辑必须保持 LF，否则脚本和模板会在 Linux 上损坏。
-- **模板命名**：所有待渲染文件叫 `*.template`，渲染产物与模板同目录、去掉后缀。
+- **行尾**：`.gitattributes` 强制脚本、模板、service、`*.yml`、`*.json`、`*.toml`、`*.md`、`*.conf`、`Makefile` 全部 LF。在 Windows 上编辑必须保持 LF，否则脚本和模板会在 Linux 上损坏。
+- **模板命名**：应用配置待渲染文件叫 `*.template`，渲染产物与模板同目录、去掉后缀；systemd unit 是不经过渲染的静态 `*.service`。
 - **Shell 脚本**：`set -e`，通过 `SCRIPT_DIR`/`ROOT_DIR` 定位仓库根（`reload.sh` 额外用 `readlink -f` 处理软链）；需要 `.env` 的脚本用 `set -a; source .env; set +a` 导入变量。
-- **envsubst 陷阱**：Xray 模板里 `$XRAY_SERVERNAMES` / `$XRAY_SHORTIDS` 的值本身带引号（如 `"a","b"`），因为模板中是裸数组元素；修改时注意引号归属。
+- **envsubst 陷阱**：文本模板中的项目变量统一使用 `${VAR}`；Nginx `$host`、systemd `$MAINPID` 等程序变量必须保持字面量。Xray 的 `XRAY_SERVERNAMES` / `XRAY_SHORTIDS` 是不带 JSON 引号的逗号分隔数据，由 jq filter 转成数组。
 - **安装脚本的包类型判断**：`install-bin.sh` 按 URL 后缀（`.tar.gz`/`.zip`/`.deb`/裸二进制）走不同解压分支；将某个 `*_DOWNLOAD_URL` 留空即跳过该组件。
-- **systemd 模式没有 Xray**：`systemd/` 只有 hy2/nginx/sing-box 三个模板，`install-systemd.sh` 的服务集合固定为 `nginx hy2 sing-box`。Xray 仅 Docker 模式支持（readme 目录树中提到的 xray.service.template 实际不存在）。
+- **systemd 模式没有 Xray**：`systemd/` 只有 hy2/nginx/sing-box 三个静态 unit，`install-systemd.sh` 的服务集合固定为 `nginx hy2 sing-box`。Xray 仅 Docker 模式支持。
 
 ## 已知陷阱（改动前必读）
 
 - **HY2 ACL 语法**：是 `outbound_name(matcher)`（如 `warp_proxy(suffix:google.com)`），**不是** `outbound(matcher, outbound_name)`，写错会报 `outbound not found`。
 - **sing-box 路由顺序**：`{ "action": "sniff" }` 必须是 `route.rules` 第一条，否则域名分流（WARP 规则）失效；规则按数组顺序匹配。
-- **不要动 `$host` 等 Nginx 变量**：`make template` 的受限替换正是为此设计，若改成全量 envsubst 会破坏 `acme.conf`。
-- **客户端 JSON 是 heredoc 拼接**：`gen-client-config.sh` 中可选块（如 WARP outbound/route rule）通过空字符串变量控制逗号，增删字段时仔细检查尾逗号。
+- **不要动 `$host` 等 Nginx 变量**：统一渲染器只对白名单变量执行 `envsubst`，不能改成全量替换。
+- **客户端 JSON 由 jq filter 处理**：`scripts/config/filters/sing-box-client.jq` 负责协议裁剪、DNS 对象、默认出口和 WARP 规则；修改后必须保持 sniff 规则第一条以及 JSON 类型正确。
 - **客户端 REALITY 公钥**：`.env.client` 的 `CLIENT_VLESS_REALITY_PUBLIC_KEY` 填服务端 `xray x25519` 输出的 **Public key**，不是私钥。
 - **同一台机器不要混跑两种模式的同一服务**（端口冲突）。
 - `scripts/easysetup.sh` 与代理部署无关，是个人 dotfiles（bashrc/tmux/vim）安装器，别把它接进部署流程。

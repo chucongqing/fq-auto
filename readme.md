@@ -46,8 +46,7 @@
 
 - 一台 Linux 服务器（推荐 Ubuntu / Debian / CentOS / Alpine）
 - 一个自己的域名，并已解析到服务器 IP
-- 已安装 `make` 和 `envsubst` (通常 `apt install gettext-base`)
-- 如需生成局域网客户端配置，另外安装 `jq`（用于应用客户端协议/WARP 开关）
+- 已安装 `make`、`envsubst`（通常 `apt install gettext-base`）和 `jq`
 - 已安装 [acme.sh](https://github.com/acmesh-official/acme.sh) 用于自动签发 SSL 证书
 
 ### 二选一（两种模式只需要满足其一）
@@ -80,17 +79,18 @@ curl https://get.acme.sh | sh -s email=my@example.com
 │   ├── reload.sh           # Docker 模式：重启所有容器
 │   ├── install-bin.sh      # systemd 模式：下载二进制
 │   ├── install-systemd.sh  # systemd 模式：安装系统服务
-│   └── uninstall-systemd.sh # systemd 模式：卸载系统服务
+│   ├── uninstall-systemd.sh # systemd 模式：卸载系统服务
+│   ├── gen-client-config.sh # 兼容入口：转发到统一配置渲染器
+│   └── config/              # 统一配置渲染器、校验器与 jq filters
 ├── server/                 # Docker 模式配置文件模板
 │   ├── nginx/
 │   ├── xray/
 │   ├── hy2/
 │   └── sing-box/
-└── systemd/                # systemd service 模板
-    ├── nginx.service.template
-    ├── xray.service.template
-    ├── hy2.service.template
-    └── sing-box.service.template
+└── systemd/                # 静态 systemd service 文件
+    ├── nginx.service
+    ├── hy2.service
+    └── sing-box.service
 ```
 
 ---
@@ -128,7 +128,13 @@ SINGBOX_TUIC_PASSWORD=your-strong-password
 生成配置文件：
 
 ```bash
-make template    # 渲染所有配置文件
+make template    # 兼容命令：生成服务端配置
+
+# 新的统一入口
+make config-server
+make config-client
+make config-all
+make config-check
 ```
 
 申请 SSL 证书（两种模式都需要）：
@@ -272,8 +278,8 @@ sudo make clear-nginx-systemd      # 清除 nginx 代理配置文件
 | `XRAY_UUID` | VLESS 用户 UUID | 用 `xray uuid` 生成 |
 | `XRAY_VLESS_PORT` | VLESS 入站端口 | `443` |
 | `XRAY_TARGET` | REALITY 伪装目标 | `www.microsoft.com:443` |
-| `XRAY_SERVERNAMES` | REALITY 允许 SNI | `"www.microsoft.com","microsoft.com"` |
-| `XRAY_SHORTIDS` | REALITY shortId（可多个） | `"aabbccdd","ffee5678"` |
+| `XRAY_SERVERNAMES` | REALITY 允许 SNI（逗号分隔，不带 JSON 引号） | `www.microsoft.com,microsoft.com` |
+| `XRAY_SHORTIDS` | REALITY shortId（逗号分隔，不带 JSON 引号） | `aabbccdd,ffee5678` |
 | `XRAY_REALITY_PRIVATE_KEY` | REALITY 私钥 | 用 `xray x25519` 生成 |
 | `XRAY_REALITY_MLDSA65_SEED` | REALITY ML-DSA65 种子 | 用 `xray x25519` 生成 |
 | `HY2_ADDR` | Hysteria 2 监听地址 | `:10443` |
@@ -313,7 +319,10 @@ docker run --rm ghcr.io/xtls/xray-core x25519
 |------|------|
 | `make init` | 创建证书、SSL 目录 |
 | `make env` | 从 `.env.example` 复制出 `.env` |
-| `make template` | 渲染所有配置文件（Docker 路径） |
+| `make config-server` / `make template` | 生成服务端配置（兼容入口） |
+| `make config-client` / `make client-template` | 生成客户端配置（兼容入口） |
+| `make config-all` | 同时生成服务端和客户端配置 |
+| `make config-check` | 校验环境、生成物和可用的服务语义 |
 | `make issue_cert` | 用 acme.sh 申请 Let's Encrypt 证书 |
 | `make install_cert` | 安装证书到 `/etc/ssl`，并设置续期钩子 |
 | `make clear` | 清除 Docker 模式的配置文件和 `.env` |
@@ -436,7 +445,7 @@ journalctl -u sing-box -f
 
 | 服务 | 协议/功能 | 入站类型 | 默认端口 |
 |------|----------|---------|---------|
-| **sing-box-client** | VLESS / TUIC / AnyTLS 多协议出站，自动测速选路 | Mixed（SOCKS5 + HTTP） | `7890` |
+| **sing-box-client** | VLESS / HY2 / TUIC / AnyTLS 多协议出站 | Mixed（SOCKS5 + HTTP） | `7890` |
 | **hysteria2-client** | Hysteria 2 原生客户端 | SOCKS5 + HTTP | `7891` / `7892` |
 
 两个服务完全独立，可以单独启动、停止和重启。
@@ -454,7 +463,7 @@ journalctl -u sing-box -f
            │                客户端 (共享代理)              │
            │  ┌────────────────────────────────────────┐  │
            │  │  sing-box-client (Mixed: SOCKS5+HTTP)  │  │
-           │  │  :7890 ──► VLESS / TUIC / AnyTLS       │  │
+           │  │  :7890 ──► VLESS / HY2 / TUIC / AnyTLS  │  │
            │  └────────────────────────────────────────┘  │
            │  ┌────────────────────────────────────────┐  │
            │  │  hysteria2-client (SOCKS5 + HTTP)      │  │
@@ -509,7 +518,7 @@ journalctl -u sing-box -f
 | `ENABLE_VLESS` / `ENABLE_HY2` / ... | 协议启用开关（控制 sing-box 内的 outbound） | `true` 或 `false` |
 | `CLIENT_VLESS_REALITY_PUBLIC_KEY` | REALITY 公钥 | 服务器端生成对应的公钥 |
 | `ENABLE_WARP` | 开启 Google/OpenAI 分流到本地 WARP | `false` |
-| `DEFAULT_OUTBOUND` | 默认出站代理协议 | `auto` 或指定协议名 |
+| `DEFAULT_OUTBOUND` | 默认出站代理协议 | `tuic` 或指定协议名 |
 | `CLIENT_MIXED_LISTEN` | sing-box Mixed 入站监听地址 | `0.0.0.0` 或 `127.0.0.1` |
 | `CLIENT_MIXED_PORT` | sing-box Mixed 入站端口 | `7890` |
 | `CLIENT_HY2_SOCKS5_PORT` | Hysteria 2 客户端 SOCKS5 端口 | `7891` |

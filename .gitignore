@@ -13,3 +13,7 @@ server/sing-box/config/config.json
 client/config/config.json
 client/config/rule-set/
 client/hy2-config/config.yaml
+
+# Renderer staging and temporary files
+.render.*/
+*.tmp.*
