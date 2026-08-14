@@ -1,0 +1,12 @@
+services:
+  mosdns:
+    image: ${MOSDNS_IMAGE:-irinesistiana/mosdns:v5.3.4}
+    container_name: mosdns
+    restart: always
+    network_mode: host
+    volumes:
+      - ./config:/etc/mosdns
+      - /etc/ssl:/etc/ssl
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    command: ["start", "-c", "/etc/mosdns/config.yaml"]

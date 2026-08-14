@@ -1,0 +1,15 @@
+[Unit]
+Description=mosdns DNS Service
+Documentation=https://irine-sistiana.gitbook.io/mosdns-wiki/
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/mosdns start -c /usr/local/etc/mosdns/config.yaml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

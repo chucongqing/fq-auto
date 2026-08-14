@@ -154,6 +154,15 @@ install_singbox() {
     mkdir -p /usr/local/etc/sing-box
 }
 
+install_mosdns() {
+    if [ -z "$MOSDNS_DOWNLOAD_URL" ]; then
+        echo "[SKIP] MOSDNS_DOWNLOAD_URL not set, skipping mosdns"
+        return
+    fi
+    install_from_url "mosdns" "$MOSDNS_DOWNLOAD_URL" "/usr/local/bin/mosdns" "mosdns"
+    mkdir -p /usr/local/etc/mosdns
+}
+
 install_nginx() {
     if command -v nginx >/dev/null 2>&1; then
         echo "[nginx] Already installed: $(which nginx)"
@@ -184,11 +193,13 @@ case "$ACTION" in
     proxies)
         install_hy2
         install_singbox
+        install_mosdns
         echo "[DONE] Proxy binaries installed."
         ;;
     all)
         install_hy2
         install_singbox
+        install_mosdns
         install_nginx
         echo "[DONE] All binaries installed."
         ;;

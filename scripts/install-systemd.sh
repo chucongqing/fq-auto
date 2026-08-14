@@ -19,10 +19,10 @@ case "$ACTION" in
         SERVICES="nginx"
         ;;
     proxies)
-        SERVICES="hy2 sing-box"
+        SERVICES="hy2 sing-box mosdns"
         ;;
     all)
-        SERVICES="nginx hy2 sing-box"
+        SERVICES="nginx hy2 sing-box mosdns"
         ;;
     *)
         echo "Usage: $0 [nginx|proxies|all]"

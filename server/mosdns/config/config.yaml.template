@@ -1,0 +1,53 @@
+# mosdns v5 配置（由 make template 渲染生成，请勿直接编辑本文件）
+# 用途：自建防污染 DNS。客户端 REMOTE_DNS 指向本服务的 DoH（走代理隧道出站）。
+#
+# 说明：
+# - 上游走 Cloudflare / Google 的 DoH，服务器在境外，天然不受 DNS 污染。
+# - cache 插件缓存查询结果，降低重复解析延迟。
+# - DoH 监听 MOSDNS_DOH_PORT，DoT 监听 MOSDNS_DOT_PORT，均复用 acme.sh 签发的 /etc/ssl 证书。
+# - 国内/国外分流已由客户端 sing-box 完成（LOCAL_DNS 直连国内，REMOTE_DNS 走隧道到本服务），
+#   因此这里无需再做 geosite 分流。
+log:
+  level: info
+
+plugins:
+  - tag: "forward_remote"
+    type: "forward"
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "$MOSDNS_UPSTREAM_PRIMARY"
+        - addr: "$MOSDNS_UPSTREAM_SECONDARY"
+
+  - tag: "cache"
+    type: "cache"
+    args:
+      size: 10240
+      lazy_cache_ttl: 86400
+
+  # 主查询链：先查缓存，未命中再转发上游并回填缓存
+  - tag: "main"
+    type: "sequence"
+    args:
+      - exec: "$cache"
+      - exec: "$forward_remote"
+
+  # DoH（HTTPS）监听，客户端 REMOTE_DNS 用 https://<MYSITE>:<port>/dns-query
+  - tag: "doh_server"
+    type: "http_server"
+    args:
+      entries:
+        - exec: "main"
+          path: "/dns-query"
+      listen: "0.0.0.0:$MOSDNS_DOH_PORT"
+      cert: "/etc/ssl/cert.pem"
+      key: "/etc/ssl/key.pem"
+
+  # DoT（TLS）监听，客户端也可用 tls://<MYSITE>:<port>
+  - tag: "dot_server"
+    type: "tcp_server"
+    args:
+      entry: "main"
+      listen: "0.0.0.0:$MOSDNS_DOT_PORT"
+      cert: "/etc/ssl/cert.pem"
+      key: "/etc/ssl/key.pem"
