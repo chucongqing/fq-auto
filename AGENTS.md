@@ -36,7 +36,7 @@
 两种部署模式共享同一份 `.env` 和同一套渲染产物：
 
 - **Docker 模式**：`server/*/docker-compose.yml` 各自独立，`network_mode: host`，统一挂载 `/etc/ssl` 证书。
-- **systemd 模式**：二进制装到 `/usr/local/bin`，配置复制到 `/usr/local/etc/`，unit 文件由 `systemd/*.service.template` 渲染到 `/etc/systemd/system/`。服务以 root 运行。
+- **systemd 模式**：二进制装到 `/usr/local/bin`，配置复制到 `/usr/local/etc/`，unit 文件是**静态** `systemd/*.service`，由 `install-systemd.sh` 以 `install -m 0644` 原样安装到 `/etc/systemd/system/`，不做任何 envsubst 渲染。服务以 root 运行。
 
 ### 客户端（局域网共享代理，Docker Compose）
 
@@ -44,6 +44,8 @@
 
 - `sing-box-client`：Mixed 入站（SOCKS5+HTTP，:7890），VLESS/HY2/TUIC/AnyTLS 多协议出站 + 默认出口选择 + geoip/geosite-cn 分流。
 - `hysteria2-client`：原生 HY2 客户端，SOCKS5 :7891 / HTTP :7892。
+
+> 客户端 VLESS/HY2 outbound 是确认保留的行为范围：仓库说明与 `ENABLE_VLESS`/`ENABLE_HY2` 开关早已声明支持，统一化提交只是修复了既有实现缺口（超出"仅统一生成方式"的重构范围）。修改相关 jq filter 时必须回归全部协议组合（见下方"测试与验证"）。
 
 ### 目录速查
 
@@ -70,7 +72,7 @@ temp/                  # 本地日志（已 gitignore）
    - `server/nginx/conf/acme.conf`
    - `server/xray/config/config.json`
    - `server/sing-box/config/config.json`
-3. `make config-client` 生成客户端 sing-box JSON 与 HY2 YAML；`make config-all` 要求两个 env 文件都存在，并在全部目标通过校验后一次性提交。
+3. `make config-client` 生成客户端 sing-box JSON 与 HY2 YAML；`make config-all` 要求两个 env 文件都存在。所有产物先渲染到临时 `.render.*` 目录，依次通过格式检查与可用的服务语义检查（sing-box `check`、xray `-test`、隔离配置下的 `nginx -t`，命令缺失时输出 `[SKIP]`），全部通过后才一次性替换正式输出；任一步失败都不覆盖旧配置。
 4. 生成物全部被 `.gitignore` 排除，**绝不提交**。
 5. 证书：`make issue_cert` + `make install_cert`（acme.sh → `/etc/ssl/{cert,key.pem}`，`--reloadcmd` 指向 `scripts/reload.sh`，续期后自动重载）。
 
@@ -88,7 +90,7 @@ make restart-docker-<svc>  # 单容器重建（配置变更后）
 
 # systemd 模式（需 sudo）
 make install-bin           # 按 .env 中 *_DOWNLOAD_URL 下载二进制到 /usr/local/bin
-make install-systemd       # 渲染并启用 hy2/sing-box service
+make install-systemd       # 安装并启用 hy2/sing-box 的静态 service
 make sys-template          # 复制配置到 /usr/local/etc/
 make start|stop|restart|status
 make start-nginx 等        # Nginx 单独一组命令（避免破坏系统已有 Nginx）
@@ -105,7 +107,7 @@ make client-up / client-down / client-logs-singbox 等
 
 - `bash -n scripts/xxx.sh` —— Shell 语法检查。
 - `make template` 后人工检查生成物变量是否替换完全（不应残留 `$VAR`）。
-- `bash scripts/config/*.sh -n` 检查渲染脚本语法；`jq empty` 检查生成 JSON；`make config-check` 会在可用时追加 sing-box/xray/nginx 语义检查。
+- `bash -n scripts/config/render.sh`、`bash -n scripts/config/lib.sh`、`bash -n scripts/config/validate.sh`、`bash -n scripts/gen-client-config.sh` —— 逐脚本做 Shell 语法检查（不要写成 `bash scripts/*.sh -n`：通配符展开后 `-n` 会被当成位置参数）；`jq empty` 检查生成 JSON；`make config-check` 会在可用时追加 sing-box/xray/nginx 语义检查。
 - `make sys-template-nginx` 会跑 `nginx -t`（容错 `|| true`）。
 - 端到端验证只能在真实 Linux 服务器上做：`docker ps` / `systemctl status` + `journalctl -u <svc> -f`。
 
@@ -114,6 +116,7 @@ make client-up / client-down / client-logs-singbox 等
 - **行尾**：`.gitattributes` 强制脚本、模板、service、`*.yml`、`*.json`、`*.toml`、`*.md`、`*.conf`、`Makefile` 全部 LF。在 Windows 上编辑必须保持 LF，否则脚本和模板会在 Linux 上损坏。
 - **模板命名**：应用配置待渲染文件叫 `*.template`，渲染产物与模板同目录、去掉后缀；systemd unit 是不经过渲染的静态 `*.service`。
 - **Shell 脚本**：`set -e`，通过 `SCRIPT_DIR`/`ROOT_DIR` 定位仓库根（`reload.sh` 额外用 `readlink -f` 处理软链）；需要 `.env` 的脚本用 `set -a; source .env; set +a` 导入变量。
+- **脚本可执行位**：`scripts/config/render.sh` 与 `scripts/gen-client-config.sh` 已提交可执行位，可直接运行（如 `scripts/config/render.sh server`）；`make init` 会再次 `chmod +x`。`make config-server` 等目标直接调用脚本，不再经 `bash` 包一层。
 - **envsubst 陷阱**：文本模板中的项目变量统一使用 `${VAR}`；Nginx `$host`、systemd `$MAINPID` 等程序变量必须保持字面量。Xray 的 `XRAY_SERVERNAMES` / `XRAY_SHORTIDS` 是不带 JSON 引号的逗号分隔数据，由 jq filter 转成数组。
 - **安装脚本的包类型判断**：`install-bin.sh` 按 URL 后缀（`.tar.gz`/`.zip`/`.deb`/裸二进制）走不同解压分支；将某个 `*_DOWNLOAD_URL` 留空即跳过该组件。
 - **systemd 模式没有 Xray**：`systemd/` 只有 hy2/nginx/sing-box 三个静态 unit，`install-systemd.sh` 的服务集合固定为 `nginx hy2 sing-box`。Xray 仅 Docker 模式支持。

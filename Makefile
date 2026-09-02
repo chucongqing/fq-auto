@@ -36,6 +36,8 @@ init: ## 初始化目录结构与脚本权限（/var/www/cert、/etc/ssl、reloa
 	-mkdir -p /var/www/cert
 	-mkdir -p /etc/ssl
 	chmod +x $(CUR_DIR)/scripts/reload.sh
+	chmod +x $(CUR_DIR)/scripts/config/render.sh
+	chmod +x $(CUR_DIR)/scripts/gen-client-config.sh
 
 env: ## 生成 .env（复制自 .env.example）
 	-mkdir -p /var/www/cert
@@ -56,16 +58,16 @@ clear-nginx-systemd: ## 删除 /etc/nginx/conf.d/acme.conf
 	rm -f /etc/nginx/conf.d/acme.conf
 
 config-server: ## 统一生成服务端配置（需先 make env）
-	bash "$(CUR_DIR)/scripts/config/render.sh" server
+	"$(CUR_DIR)/scripts/config/render.sh" server
 
 config-client: ## 统一生成客户端配置（需先 make client-env）
-	bash "$(CUR_DIR)/scripts/config/render.sh" client
+	"$(CUR_DIR)/scripts/config/render.sh" client
 
 config-all: ## 同时生成服务端和客户端配置
-	bash "$(CUR_DIR)/scripts/config/render.sh" all
+	"$(CUR_DIR)/scripts/config/render.sh" all
 
 config-check: ## 校验环境文件、已生成配置和可用的服务端语义
-	bash "$(CUR_DIR)/scripts/config/render.sh" check
+	"$(CUR_DIR)/scripts/config/render.sh" check
 
 template: config-server ## 兼容旧命令：生成服务端配置
 
@@ -129,11 +131,11 @@ install-nginx: ## 安装系统 Nginx（不装代理二进制）
 	chmod +x $(CUR_DIR)/scripts/install-bin.sh
 	$(CUR_DIR)/scripts/install-bin.sh nginx
 
-install-systemd: ## 渲染并启用 hy2/sing-box 的 systemd 服务
+install-systemd: ## 安装并启用 hy2/sing-box 的静态 systemd 服务
 	chmod +x $(CUR_DIR)/scripts/install-systemd.sh
 	$(CUR_DIR)/scripts/install-systemd.sh proxies
 
-install-nginx-systemd: ## 渲染并启用 Nginx 的 systemd 服务
+install-nginx-systemd: ## 安装并启用 Nginx 的静态 systemd 服务
 	chmod +x $(CUR_DIR)/scripts/install-systemd.sh
 	$(CUR_DIR)/scripts/install-systemd.sh nginx
 

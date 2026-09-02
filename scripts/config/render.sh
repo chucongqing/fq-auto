@@ -129,6 +129,7 @@ render_server() {
   staged="$(stage_path "$SERVER_HY2_OUTPUT")"
   render_text "$SERVER_ENV_FILE" "$SERVER_HY2_TEMPLATE" "$staged" \
     '${HY2_ADDR} ${HY2_PASSWORD} ${HY2_WARP_ADDR}'
+  validate_hy2_toml "$staged" || return
   register_output "$staged" "$SERVER_HY2_OUTPUT"
 
   staged="$(stage_path "$SERVER_NGINX_OUTPUT")"
@@ -234,6 +235,7 @@ check_existing_outputs() {
       return 1
     fi
   done
+  validate_hy2_toml "$SERVER_HY2_OUTPUT" || return
 
   if ! grep -Fq '$host' "$SERVER_NGINX_OUTPUT"; then
     echo "Error: Nginx output no longer contains the literal \$host variable." >&2
@@ -246,20 +248,97 @@ check_existing_outputs() {
   validate_client_json_output "$CLIENT_SINGBOX_OUTPUT"
 }
 
-run_optional_semantic_checks() {
+# Resolve the path a semantic check must read: the staged file while
+# generating, or the committed output when re-checking with `check`. This
+# guarantees checks never silently read the previous committed outputs.
+semantic_path() {
+  local mode="$1"
+  local final="$2"
+  local i
+
+  if [ "$mode" = final ]; then
+    printf '%s\n' "$final"
+    return 0
+  fi
+
+  for i in "${!FINAL_OUTPUTS[@]}"; do
+    if [ "${FINAL_OUTPUTS[$i]}" = "$final" ]; then
+      printf '%s\n' "${STAGED_OUTPUTS[$i]}"
+      return 0
+    fi
+  done
+  echo "Error: no staged output registered for $final" >&2
+  return 1
+}
+
+# Run `nginx -t` against an isolated config that includes the target acme.conf,
+# so the check never depends on the machine's system Nginx configuration.
+nginx_check_config() {
+  local conf="$1"
+  local conf_abs test_conf prefix_dir
+
+  if [ ! -f "$conf" ]; then
+    echo "Error: Nginx config to check not found: $conf" >&2
+    return 1
+  fi
+  conf_abs="$(cd "$(dirname "$conf")" && pwd)/$(basename "$conf")"
+  prefix_dir="$STAGE_DIR/nginx-prefix"
+  test_conf="$STAGE_DIR/nginx-test.conf"
+  mkdir -p "$prefix_dir"
+  {
+    echo 'events {}'
+    echo 'http {'
+    echo "    include $conf_abs;"
+    echo '}'
+  } > "$test_conf"
+  nginx -t -c "$test_conf" -p "$prefix_dir/"
+}
+
+# Run available service semantic checks against staged (or committed) configs.
+# Missing commands are reported with [SKIP]; the renderer never claims a
+# semantic check ran when the command is absent. Failures abort before
+# commit_staged_outputs, preserving the previous committed configuration.
+validate_semantics() {
+  local mode="$1"   # staged | final
+  local scope="$2"  # server | client | both
+  local server_singbox_path client_singbox_path server_xray_path nginx_path
+
+  case "$scope" in
+    server|both)
+      server_singbox_path="$(semantic_path "$mode" "$SERVER_SINGBOX_OUTPUT")" || return
+      server_xray_path="$(semantic_path "$mode" "$SERVER_XRAY_OUTPUT")" || return
+      nginx_path="$(semantic_path "$mode" "$SERVER_NGINX_OUTPUT")" || return
+      ;;
+  esac
+  case "$scope" in
+    client|both)
+      client_singbox_path="$(semantic_path "$mode" "$CLIENT_SINGBOX_OUTPUT")" || return
+      ;;
+  esac
+
   if command -v sing-box >/dev/null 2>&1; then
-    sing-box check -c "$SERVER_SINGBOX_OUTPUT"
-    sing-box check -c "$CLIENT_SINGBOX_OUTPUT"
+    case "$scope" in
+      server|both) sing-box check -c "$server_singbox_path" ;;
+    esac
+    case "$scope" in
+      client|both) sing-box check -c "$client_singbox_path" ;;
+    esac
   else
     echo "[SKIP] sing-box semantic checks: sing-box command not found."
   fi
+
   if command -v xray >/dev/null 2>&1; then
-    xray run -test -config "$SERVER_XRAY_OUTPUT"
+    case "$scope" in
+      server|both) xray run -test -config "$server_xray_path" ;;
+    esac
   else
     echo "[SKIP] xray semantic check: xray command not found."
   fi
+
   if command -v nginx >/dev/null 2>&1; then
-    nginx -t
+    case "$scope" in
+      server|both) nginx_check_config "$nginx_path" ;;
+    esac
   else
     echo "[SKIP] nginx semantic check: nginx command not found."
   fi
@@ -273,8 +352,9 @@ check_config() {
   resolve_client_defaults
   resolve_client_default_outbound
   validate_client_env
+  init_stage
   check_existing_outputs
-  run_optional_semantic_checks
+  validate_semantics final both
   echo "Configuration checks passed."
 }
 
@@ -284,12 +364,14 @@ main() {
     server)
       init_stage
       render_server
+      validate_semantics staged server
       commit_staged_outputs
       echo "Server configuration generated successfully."
       ;;
     client)
       init_stage
       render_client
+      validate_semantics staged client
       commit_staged_outputs
       echo "Client configuration generated successfully."
       ;;
@@ -297,6 +379,7 @@ main() {
       init_stage
       render_server
       render_client
+      validate_semantics staged both
       commit_staged_outputs
       echo "Server and client configurations generated successfully."
       ;;

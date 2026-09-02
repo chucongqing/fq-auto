@@ -165,7 +165,11 @@ validate_client_env() {
   local variable_name
   local enabled_count=0
 
-  require_nonempty SERVER_ADDR || return
+  # SERVER_ADDR is optional: resolve_client_defaults already fell back to it for
+  # protocols that did not set their own address. Each enabled protocol is
+  # validated below against the resolved value, so an empty SERVER_ADDR is fine
+  # when every enabled protocol sets its own address. The standalone Hysteria 2
+  # client always needs a HY2 address.
   for variable_name in ENABLE_VLESS ENABLE_HY2 ENABLE_TUIC ENABLE_ANYTLS ENABLE_WARP; do
     validate_bool "$variable_name" || return
   done
@@ -252,4 +256,29 @@ validate_json() {
     echo "Error: invalid JSON output: $file" >&2
     return 1
   fi
+}
+
+# Lightweight structural check for the generated Hysteria 2 TOML. This is NOT a
+# full TOML parser: it only verifies that the known string fields the renderer
+# injects are double-quoted, which catches unquoted leaks such as
+# `listen = :10443`. Hysteria 2's CLI has no stable check-only flag, so no
+# external tool is invoked here.
+validate_hy2_toml() {
+  local file="$1"
+  local line
+
+  if [ ! -f "$file" ]; then
+    validation_error "HY2 TOML output not found: $file"
+    return
+  fi
+  while IFS= read -r line; do
+    case "$line" in
+      listen\ =*|password\ =*|addr\ =*)
+        if ! [[ "$line" =~ ^[[:space:]]*[A-Za-z0-9_.]+[[:space:]]*=[[:space:]]*\".*\"[[:space:]]*$ ]]; then
+          validation_error "HY2 TOML string field is not a double-quoted string: $line"
+          return
+        fi
+        ;;
+    esac
+  done < "$file"
 }
