@@ -1,0 +1,94 @@
+diff --git a/client/config/config.json.template b/client/config/config.json.template
+index d92c4a5..d392448 100644
+--- a/client/config/config.json.template
++++ b/client/config/config.json.template
+@@ -48,10 +48,7 @@ $LOCAL_DNS_JSON
+       "tag": "proxy",
+       "outbounds": [
+         "auto",
+-        "vless",
+-        "hy2",
+-        "tuic",
+-        "anytls"
++        "tuic"
+       ],
+       "default": "auto"
+     },
+@@ -59,51 +56,12 @@ $LOCAL_DNS_JSON
+       "type": "urltest",
+       "tag": "auto",
+       "outbounds": [
+-        "vless",
+-        "hy2",
+-        "tuic",
+-        "anytls"
++        "tuic"
+       ],
+       "url": "https://cp.cloudflare.com/generate_204",
+       "interval": "3m0s",
+       "tolerance": 50
+     },
+-    {
+-      "type": "vless",
+-      "tag": "vless",
+-      "server": "$CLIENT_VLESS_SERVER",
+-      "server_port": $CLIENT_VLESS_PORT,
+-      "uuid": "$CLIENT_VLESS_UUID",
+-      "flow": "xtls-rprx-vision",
+-      "tls": {
+-        "enabled": true,
+-        "server_name": "$CLIENT_VLESS_SERVER_NAME",
+-        "utls": {
+-          "enabled": true,
+-          "fingerprint": "chrome"
+-        },
+-        "reality": {
+-          "enabled": true,
+-          "public_key": "$CLIENT_VLESS_REALITY_PUBLIC_KEY",
+-          "short_id": "$CLIENT_VLESS_REALITY_SHORT_ID"
+-        }
+-      }
+-    },
+-    {
+-      "type": "hysteria2",
+-      "tag": "hy2",
+-      "server": "$CLIENT_HY2_SERVER",
+-      "server_port": $CLIENT_HY2_PORT,
+-      "password": "$CLIENT_HY2_PASSWORD",
+-      "tls": {
+-        "enabled": true,
+-        "server_name": "$CLIENT_HY2_SERVER_NAME",
+-        "utls": {
+-          "enabled": true,
+-          "fingerprint": "chrome"
+-        }
+-      }
+-    },
+     {
+       "type": "tuic",
+       "tag": "tuic",
+diff --git a/client/docker-compose.yml b/client/docker-compose.yml
+index 602507a..45a41d0 100644
+--- a/client/docker-compose.yml
++++ b/client/docker-compose.yml
+@@ -3,8 +3,7 @@ services:
+     image: ${CLIENT_SINGBOX_IMAGE:-ghcr.io/sagernet/sing-box:1.13.12}
+     container_name: sing-box-client
+     restart: always
+-    ports:
+-      - "${CLIENT_MIXED_PORT:-7890}:${CLIENT_MIXED_PORT:-7890}"
++    network_mode: host
+     volumes:
+       - ./config:/etc/sing-box
+       - /etc/localtime:/etc/localtime:ro
+@@ -15,6 +14,7 @@ services:
+     image: ${CLIENT_HY2_IMAGE:-tobyxdd/hysteria:v2.9.2}
+     container_name: hysteria2-client
+     restart: always
++    env_file: ../.env.client
+     ports:
+       - "${CLIENT_HY2_SOCKS5_PORT:-7891}:${CLIENT_HY2_SOCKS5_PORT:-7891}"
+       - "${CLIENT_HY2_HTTP_PORT:-7892}:${CLIENT_HY2_HTTP_PORT:-7892}"
+diff --git a/scripts/gen-client-config.sh b/scripts/gen-client-config.sh
+old mode 100644
+new mode 100755

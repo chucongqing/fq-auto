@@ -7,17 +7,17 @@
       "type": "tuic",
       "tag": "tuic-in",
       "listen": "::",
-      "listen_port": $SINGBOX_TUIC_PORT,
+      "listen_port": 0,
       "users": [
         {
-          "uuid": "$SINGBOX_TUIC_UUID",
-          "password": "$SINGBOX_TUIC_PASSWORD"
+          "uuid": "",
+          "password": ""
         }
       ],
       "congestion_control": "bbr",
       "tls": {
         "enabled": true,
-        "server_name": "$MYSITE",
+        "server_name": "",
         "alpn": [
           "h3"
         ],
@@ -29,16 +29,16 @@
       "type": "anytls",
       "tag": "anytls-in",
       "listen": "::",
-      "listen_port": $SINGBOX_ANYTLS_PORT,
+      "listen_port": 0,
       "users": [
         {
-          "name": "$SINGBOX_ANYTLS_USERNAME",
-          "password": "$SINGBOX_ANYTLS_PASSWORD"
+          "name": "",
+          "password": ""
         }
       ],
       "tls": {
         "enabled": true,
-        "server_name": "$MYSITE",
+        "server_name": "",
         "certificate_path": "/etc/ssl/cert.pem",
         "key_path": "/etc/ssl/key.pem"
       }
@@ -52,8 +52,8 @@
     {
       "type": "socks",
       "tag": "warp",
-      "server": "$SINGBOX_WARP_SERVER",
-      "server_port": $SINGBOX_WARP_PORT
+      "server": "",
+      "server_port": 0
     }
   ],
   "route": {

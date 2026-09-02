@@ -4,12 +4,12 @@
     },
     "inbounds": [
         {
-            "port": $XRAY_VLESS_PORT,
+            "port": 0,
             "protocol": "vless",
             "settings": {
                 "clients": [
                     {
-                        "id": "$XRAY_UUID",
+                        "id": "",
                         "flow": "xtls-rprx-vision"
                     }
                 ],
@@ -20,15 +20,11 @@
                 "security": "reality",
                 "realitySettings": {
                     "show": false,
-                    "target": "$XRAY_TARGET",
-                    "serverNames": [
-                        $XRAY_SERVERNAMES
-                    ],
-                    "shortIds": [
-                        $XRAY_SHORTIDS
-                    ],
-                    "privateKey": "$XRAY_REALITY_PRIVATE_KEY",
-                    "mldsa65Seed": "$XRAY_REALITY_MLDSA65_SEED"
+                    "target": "",
+                    "serverNames": [],
+                    "shortIds": [],
+                    "privateKey": "",
+                    "mldsa65Seed": ""
                 }
             }
         }

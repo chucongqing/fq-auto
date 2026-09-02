@@ -1,8 +1,8 @@
-server: "$CLIENT_HY2_SERVER:$CLIENT_HY2_PORT"
-auth: "$CLIENT_HY2_PASSWORD"
+server: "${CLIENT_HY2_SERVER}:${CLIENT_HY2_PORT}"
+auth: "${CLIENT_HY2_PASSWORD}"
 socks5:
-  listen: "0.0.0.0:$CLIENT_HY2_SOCKS5_PORT"
+  listen: "0.0.0.0:${CLIENT_HY2_SOCKS5_PORT}"
 http:
-  listen: "0.0.0.0:$CLIENT_HY2_HTTP_PORT"
+  listen: "0.0.0.0:${CLIENT_HY2_HTTP_PORT}"
 tls:
-  sni: "$CLIENT_HY2_SERVER_NAME"
+  sni: "${CLIENT_HY2_SERVER_NAME}"
